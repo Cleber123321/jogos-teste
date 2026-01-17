@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Jogo da Velha Online P2P</title>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+<style>
+body {
+  font-family: Arial;
+  text-align: center;
+  background: #111;
+  color: white;
+}
+
+#tabuleiro {
+  display: grid;
+  grid-template-columns: repeat(3, 100px);
+  gap: 5px;
+  justify-content: center;
+  margin: 20px auto;
+}
+
+.casa {
+  width: 100px;
+  height: 100px;
+  font-size: 48px;
+  cursor: pointer;
+  background: #222;
+  border: 2px solid #555;
+  color: white;
+}
+
+.casa:hover {
+  background: #333;
+}
+
+#status {
+  margin-top: 10px;
+  font-size: 18px;
+}
+
+input, button {
+  padding: 8px;
+  margin: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎮 Jogo da Velha Online (P2P)</h1>
+
+<p>Seu ID:</p>
+<b id="meuId">Gerando...</b>
+
+<br><br>
+
+<input id="idOutro" placeholder="ID do outro jogador">
+<button onclick="conectar()">Conectar</button>
+
+<div id="status">Aguardando conexão...</div>
+
+<div id="tabuleiro"></div>
+
+<p>🏆 Vitórias: <span id="vitorias">0</span></p>
+
+<script>
+let peer = new Peer();
+let conn = null;
+
+let tabuleiro = Array(9).fill("");
+let meuSimbolo = "";
+let minhaVez = false;
+let vitorias = 0;
+
+const combinacoes = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+peer.on("open", id => {
+  document.getElementById("meuId").innerText = id;
+});
+
+peer.on("connection", connection => {
+  conn = connection;
+  meuSimbolo = "O";
+  minhaVez = false;
+  status("Conectado! Você é O");
+  configurarConexao();
+});
+
+function conectar() {
+  const outroId = document.getElementById("idOutro").value;
+  conn = peer.connect(outroId);
+
+  conn.on("open", () => {
+    meuSimbolo = "X";
+    minhaVez = true;
+    status("Conectado! Você é X");
+    configurarConexao();
+  });
+}
+
+function configurarConexao() {
+  conn.on("data", data => {
+    if (data.tipo === "jogada") {
+      tabuleiro[data.pos] = data.simbolo;
+      minhaVez = true;
+      desenhar();
+      checarFim();
+    }
+
+    if (data.tipo === "fim") {
+      alert("🏆 Vencedor: " + data.vencedor);
+      resetar();
+    }
+  });
+
+  criarTabuleiro();
+}
+
+function criarTabuleiro() {
+  const div = document.getElementById("tabuleiro");
+  div.innerHTML = "";
+
+  for (let i = 0; i < 9; i++) {
+    const btn = document.createElement("button");
+    btn.className = "casa";
+    btn.onclick = () => jogar(i);
+    div.appendChild(btn);
+  }
+
+  desenhar();
+}
+
+function desenhar() {
+  document.querySelectorAll(".casa").forEach((casa, i) => {
+    casa.innerText = tabuleiro[i];
+  });
+}
+
+function jogar(pos) {
+  if (!minhaVez || tabuleiro[pos] !== "") return;
+
+  tabuleiro[pos] = meuSimbolo;
+  minhaVez = false;
+  desenhar();
+
+  conn.send({
+    tipo: "jogada",
+    pos,
+    simbolo: meuSimbolo
+  });
+
+  checarFim();
+}
+
+function checarFim() {
+  for (let c of combinacoes) {
+    const [a,b,c2] = c;
+    if (
+      tabuleiro[a] &&
+      tabuleiro[a] === tabuleiro[b] &&
+      tabuleiro[a] === tabuleiro[c2]
+    ) {
+      venceu(tabuleiro[a]);
+      return;
+    }
+  }
+
+  if (!tabuleiro.includes("")) {
+    alert("🤝 Empate!");
+    resetar();
+  }
+}
+
+function venceu(simbolo) {
+  if (simbolo === meuSimbolo) {
+    vitorias++;
+    document.getElementById("vitorias").innerText = vitorias;
+    conn.send({ tipo: "fim", vencedor: simbolo });
+    alert("🎉 Você venceu!");
+  }
+  resetar();
+}
+
+function resetar() {
+  tabuleiro = Array(9).fill("");
+  desenhar();
+  minhaVez = (meuSimbolo === "X");
+}
+
+function status(msg) {
+  document.getElementById("status").innerText = msg;
+}
+</script>
+
+</body>
+</html>
