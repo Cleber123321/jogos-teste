@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Jogo da Velha Online</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+body {
+    font-family: Arial;
+    background: #c0c0c0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+.container {
+    background: #e0e0e0;
+    padding: 20px;
+    border: 3px solid #808080;
+    text-align: center;
+}
+.tabuleiro {
+    display: grid;
+    grid-template-columns: repeat(3, 80px);
+    gap: 5px;
+    margin: 15px auto;
+}
+.celula {
+    width: 80px;
+    height: 80px;
+    background: white;
+    border: 2px solid black;
+    font-size: 48px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h2>Jogo da Velha Online</h2>
+
+    <div>
+        <input id="sala" placeholder="Código da sala">
+        <button onclick="entrar()">Entrar / Criar</button>
+    </div>
+
+    <p id="status">Aguardando...</p>
+
+    <div class="tabuleiro">
+        <div class="celula" onclick="jogar(0)"></div>
+        <div class="celula" onclick="jogar(1)"></div>
+        <div class="celula" onclick="jogar(2)"></div>
+        <div class="celula" onclick="jogar(3)"></div>
+        <div class="celula" onclick="jogar(4)"></div>
+        <div class="celula" onclick="jogar(5)"></div>
+        <div class="celula" onclick="jogar(6)"></div>
+        <div class="celula" onclick="jogar(7)"></div>
+        <div class="celula" onclick="jogar(8)"></div>
+    </div>
+</div>
+
+<script>
+/* 🔥 COLE AQUI SEU firebaseConfig 🔥 */
+const firebaseConfig = {
+    apiKey: "SUA_API_KEY",
+    authDomain: "SEU_DOMINIO",
+    databaseURL: "SUA_DATABASE_URL",
+    projectId: "SEU_PROJECT_ID",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let salaId;
+let jogador;
+let estadoRef;
+
+function entrar() {
+    salaId = document.getElementById("sala").value;
+    if (!salaId) return alert("Digite o código da sala");
+
+    estadoRef = db.ref("salas/" + salaId);
+
+    estadoRef.once("value", snap => {
+        if (!snap.exists()) {
+            jogador = "X";
+            estadoRef.set({
+                tabuleiro: ["","","","","","","","",""],
+                vez: "X"
+            });
+        } else {
+            jogador = "O";
+        }
+
+        estadoRef.on("value", atualizar);
+        document.getElementById("status").innerText = "Você é: " + jogador;
+    });
+}
+
+function atualizar(snapshot) {
+    const dados = snapshot.val();
+    if (!dados) return;
+
+    const celulas = document.querySelectorAll(".celula");
+    dados.tabuleiro.forEach((v, i) => {
+        celulas[i].innerText = v;
+    });
+
+    document.getElementById("status").innerText =
+        dados.vez === jogador ? "Sua vez ("+jogador+")" : "Vez do adversário";
+}
+
+function jogar(i) {
+    estadoRef.once("value", snap => {
+        const dados = snap.val();
+        if (dados.vez !== jogador) return;
+        if (dados.tabuleiro[i] !== "") return;
+
+        dados.tabuleiro[i] = jogador;
+        dados.vez = jogador === "X" ? "O" : "X";
+        estadoRef.set(dados);
+    });
+}
+</script>
+
+</body>
+</html>
