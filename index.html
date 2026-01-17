@@ -2,132 +2,200 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Jogo da Velha Online</title>
+<title>Jogo da Velha Online P2P</title>
 
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
 <style>
 body {
-    font-family: Arial;
-    background: #c0c0c0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
+  font-family: Arial;
+  text-align: center;
+  background: #111;
+  color: white;
 }
-.container {
-    background: #e0e0e0;
-    padding: 20px;
-    border: 3px solid #808080;
-    text-align: center;
+
+#tabuleiro {
+  display: grid;
+  grid-template-columns: repeat(3, 100px);
+  gap: 5px;
+  justify-content: center;
+  margin: 20px auto;
 }
-.tabuleiro {
-    display: grid;
-    grid-template-columns: repeat(3, 80px);
-    gap: 5px;
-    margin: 15px auto;
+
+.casa {
+  width: 100px;
+  height: 100px;
+  font-size: 48px;
+  cursor: pointer;
+  background: #222;
+  border: 2px solid #555;
+  color: white;
 }
-.celula {
-    width: 80px;
-    height: 80px;
-    background: white;
-    border: 2px solid black;
-    font-size: 48px;
-    cursor: pointer;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+
+.casa:hover {
+  background: #333;
+}
+
+#status {
+  margin-top: 10px;
+  font-size: 18px;
+}
+
+input, button {
+  padding: 8px;
+  margin: 5px;
 }
 </style>
 </head>
 
 <body>
 
-<div class="container">
-    <h2>Jogo da Velha Online</h2>
+<h1>🎮 Jogo da Velha Online (P2P)</h1>
 
-    <div>
-        <input id="sala" placeholder="Código da sala">
-        <button onclick="entrar()">Entrar / Criar</button>
-    </div>
+<p>Seu ID:</p>
+<b id="meuId">Gerando...</b>
 
-    <p id="status">Aguardando...</p>
+<br><br>
 
-    <div class="tabuleiro">
-        <div class="celula" onclick="jogar(0)"></div>
-        <div class="celula" onclick="jogar(1)"></div>
-        <div class="celula" onclick="jogar(2)"></div>
-        <div class="celula" onclick="jogar(3)"></div>
-        <div class="celula" onclick="jogar(4)"></div>
-        <div class="celula" onclick="jogar(5)"></div>
-        <div class="celula" onclick="jogar(6)"></div>
-        <div class="celula" onclick="jogar(7)"></div>
-        <div class="celula" onclick="jogar(8)"></div>
-    </div>
-</div>
+<input id="idOutro" placeholder="ID do outro jogador">
+<button onclick="conectar()">Conectar</button>
+
+<div id="status">Aguardando conexão...</div>
+
+<div id="tabuleiro"></div>
+
+<p>🏆 Vitórias: <span id="vitorias">0</span></p>
 
 <script>
-/* 🔥 COLE AQUI SEU firebaseConfig 🔥 */
-const firebaseConfig = {
-    apiKey: "SUA_API_KEY",
-    authDomain: "SEU_DOMINIO",
-    databaseURL: "SUA_DATABASE_URL",
-    projectId: "SEU_PROJECT_ID",
-};
+let peer = new Peer();
+let conn = null;
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+let tabuleiro = Array(9).fill("");
+let meuSimbolo = "";
+let minhaVez = false;
+let vitorias = 0;
 
-let salaId;
-let jogador;
-let estadoRef;
+const combinacoes = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
 
-function entrar() {
-    salaId = document.getElementById("sala").value;
-    if (!salaId) return alert("Digite o código da sala");
+peer.on("open", id => {
+  document.getElementById("meuId").innerText = id;
+});
 
-    estadoRef = db.ref("salas/" + salaId);
+peer.on("connection", connection => {
+  conn = connection;
+  meuSimbolo = "O";
+  minhaVez = false;
+  status("Conectado! Você é O");
+  configurarConexao();
+});
 
-    estadoRef.once("value", snap => {
-        if (!snap.exists()) {
-            jogador = "X";
-            estadoRef.set({
-                tabuleiro: ["","","","","","","","",""],
-                vez: "X"
-            });
-        } else {
-            jogador = "O";
-        }
+function conectar() {
+  const outroId = document.getElementById("idOutro").value;
+  conn = peer.connect(outroId);
 
-        estadoRef.on("value", atualizar);
-        document.getElementById("status").innerText = "Você é: " + jogador;
-    });
+  conn.on("open", () => {
+    meuSimbolo = "X";
+    minhaVez = true;
+    status("Conectado! Você é X");
+    configurarConexao();
+  });
 }
 
-function atualizar(snapshot) {
-    const dados = snapshot.val();
-    if (!dados) return;
+function configurarConexao() {
+  conn.on("data", data => {
+    if (data.tipo === "jogada") {
+      tabuleiro[data.pos] = data.simbolo;
+      minhaVez = true;
+      desenhar();
+      checarFim();
+    }
 
-    const celulas = document.querySelectorAll(".celula");
-    dados.tabuleiro.forEach((v, i) => {
-        celulas[i].innerText = v;
-    });
+    if (data.tipo === "fim") {
+      alert("🏆 Vencedor: " + data.vencedor);
+      resetar();
+    }
+  });
 
-    document.getElementById("status").innerText =
-        dados.vez === jogador ? "Sua vez ("+jogador+")" : "Vez do adversário";
+  criarTabuleiro();
 }
 
-function jogar(i) {
-    estadoRef.once("value", snap => {
-        const dados = snap.val();
-        if (dados.vez !== jogador) return;
-        if (dados.tabuleiro[i] !== "") return;
+function criarTabuleiro() {
+  const div = document.getElementById("tabuleiro");
+  div.innerHTML = "";
 
-        dados.tabuleiro[i] = jogador;
-        dados.vez = jogador === "X" ? "O" : "X";
-        estadoRef.set(dados);
-    });
+  for (let i = 0; i < 9; i++) {
+    const btn = document.createElement("button");
+    btn.className = "casa";
+    btn.onclick = () => jogar(i);
+    div.appendChild(btn);
+  }
+
+  desenhar();
+}
+
+function desenhar() {
+  document.querySelectorAll(".casa").forEach((casa, i) => {
+    casa.innerText = tabuleiro[i];
+  });
+}
+
+function jogar(pos) {
+  if (!minhaVez || tabuleiro[pos] !== "") return;
+
+  tabuleiro[pos] = meuSimbolo;
+  minhaVez = false;
+  desenhar();
+
+  conn.send({
+    tipo: "jogada",
+    pos,
+    simbolo: meuSimbolo
+  });
+
+  checarFim();
+}
+
+function checarFim() {
+  for (let c of combinacoes) {
+    const [a,b,c2] = c;
+    if (
+      tabuleiro[a] &&
+      tabuleiro[a] === tabuleiro[b] &&
+      tabuleiro[a] === tabuleiro[c2]
+    ) {
+      venceu(tabuleiro[a]);
+      return;
+    }
+  }
+
+  if (!tabuleiro.includes("")) {
+    alert("🤝 Empate!");
+    resetar();
+  }
+}
+
+function venceu(simbolo) {
+  if (simbolo === meuSimbolo) {
+    vitorias++;
+    document.getElementById("vitorias").innerText = vitorias;
+    conn.send({ tipo: "fim", vencedor: simbolo });
+    alert("🎉 Você venceu!");
+  }
+  resetar();
+}
+
+function resetar() {
+  tabuleiro = Array(9).fill("");
+  desenhar();
+  minhaVez = (meuSimbolo === "X");
+}
+
+function status(msg) {
+  document.getElementById("status").innerText = msg;
 }
 </script>
 
